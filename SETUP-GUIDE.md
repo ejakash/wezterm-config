@@ -1,8 +1,26 @@
 # WezTerm + Oh My Posh Terminal Setup Guide
 
-A reproducible guide for setting up a polished WezTerm terminal on Windows with WSL. Designed to be read by a human or by Claude to replicate the setup on a new machine.
+A reproducible guide for setting up a polished WezTerm terminal on Windows with WSL. Designed to be read by a human or by an AI agent to replicate the setup on a new machine.
 
 **Last updated:** 2026-04-10
+
+---
+
+## How To Use This Guide
+
+### Setting up a new machine
+
+If you are an AI agent reading this after the user asked you to set up their terminal:
+
+1. Work through the **installation and configuration sections** in this guide from top to bottom (Install WezTerm, Install Nerd Font, Create WezTerm Config, Install Oh My Posh, Create Oh My Posh Theme, Configure .bashrc, Restart and Verify).
+2. Once everything is installed and verified, read `CHANGELOG-SUMMARY.md` in this repo.
+3. Look for any entries tagged `[optional]`. These are changes that were deliberately left out of the base setup — they may or may not apply to this machine.
+4. Present each `[optional]` entry to the user with its description. Let them accept or skip each one.
+5. For each accepted entry, read the linked changelog file in `changelogs/` and apply the change.
+
+### Making future changes
+
+After the initial setup, any new agent session opened in this project folder will automatically load `CLAUDE.md` (or `AGENTS.md` for non-Claude harnesses). These files instruct the agent on the workflow for making changes, creating changelogs, and classifying them. Just describe what you want changed — the agent handles the rest.
 
 ---
 
