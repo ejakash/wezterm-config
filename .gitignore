@@ -1,2 +1,5 @@
 # Local per-machine state — never commit
 .changelog-status
+
+# Project-local SSH key for GitHub (credentials stay in the project, not ~/.ssh)
+.ssh/
