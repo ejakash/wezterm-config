@@ -124,6 +124,18 @@ local config = wezterm.config_builder()
 -- ADAPT: Change to match your WSL distro name (run: wsl.exe -l -q)
 config.default_domain = "WSL:Ubuntu-24.04"
 
+-- config.default_cwd does not work reliably for WSL domains. Use wsl_domains
+-- to set the starting directory at the domain level instead.
+-- ADAPT: Set default_cwd to your preferred starting directory.
+-- ADAPT: Change "Ubuntu-24.04" to match your distro name (wsl.exe -l -q).
+config.wsl_domains = {
+  {
+    name = "WSL:Ubuntu-24.04",
+    distribution = "Ubuntu-24.04",
+    default_cwd = "/path/to/your/projects",
+  },
+}
+
 -- ==========================================================================
 --  COLOR SCHEME — Tokyo Night (community favorite, easy on eyes)
 -- ==========================================================================
@@ -144,7 +156,7 @@ config.cell_width = 0.9
 -- ==========================================================================
 --  WINDOW — Borderless, semi-transparent, blurred background
 -- ==========================================================================
-config.window_decorations = "RESIZE"          -- no title bar, still resizable
+config.window_decorations = "INTEGRATED_BUTTONS|RESIZE"  -- resize handles + clickable min/max/close in tab bar
 config.window_background_opacity = 0.92
 config.win32_system_backdrop = "Acrylic"      -- Windows 11 acrylic blur
 config.window_padding = { left = 12, right = 12, top = 8, bottom = 4 }
@@ -153,13 +165,28 @@ config.initial_rows = 38
 config.window_close_confirmation = "NeverPrompt"
 
 -- ==========================================================================
---  TAB BAR — Fancy retro style, bottom position
+--  TAB BAR — Fancy bar at top, fully Tokyo Night themed
 -- ==========================================================================
-config.use_fancy_tab_bar = false              -- retro pixel tab bar (cleaner)
-config.tab_bar_at_bottom = true
-config.hide_tab_bar_if_only_one_tab = true
+config.use_fancy_tab_bar = true
+config.tab_bar_at_bottom = false
+config.hide_tab_bar_if_only_one_tab = false
 config.show_new_tab_button_in_tab_bar = false
 config.tab_max_width = 80
+
+config.window_frame = {
+  font = wezterm.font("JetBrains Mono", { weight = "Medium" }),
+  font_size = 11.0,
+  active_titlebar_bg   = "#1a1b26",
+  inactive_titlebar_bg = "#16171f",
+  border_left_color   = "#1a1b26",
+  border_right_color  = "#1a1b26",
+  border_top_color    = "#1a1b26",
+  border_bottom_color = "#3b4261",
+  button_fg         = "#565f89",
+  button_bg         = "#1a1b26",
+  button_hover_fg   = "#c0caf5",
+  button_hover_bg   = "#292e42",
+}
 
 -- Custom tab title: index + process name
 wezterm.on("format-tab-title", function(tab)
@@ -250,8 +277,13 @@ config.keys = {
   -- Close pane (Ctrl+Shift+W)
   { key = "w", mods = "CTRL|SHIFT", action = act.CloseCurrentPane({ confirm = false }) },
 
-  -- New tab
-  { key = "t", mods = "CTRL|SHIFT", action = act.SpawnTab("CurrentPaneDomain") },
+  -- New tab — SpawnTab("CurrentPaneDomain") can't reliably pass CWD to a new
+  -- WSL process, so use SpawnCommandInNewTab with an explicit cwd instead.
+  -- ADAPT: Match the domain name and cwd to your machine.
+  { key = "t", mods = "CTRL|SHIFT", action = act.SpawnCommandInNewTab({
+    domain = { DomainName = "WSL:Ubuntu-24.04" },
+    cwd = "/path/to/your/projects",
+  }) },
 
   -- Tab navigation (Ctrl+Tab / Ctrl+Shift+Tab)
   { key = "Tab", mods = "CTRL",       action = act.ActivateTabRelative(1) },
@@ -296,6 +328,12 @@ config.mouse_bindings = {
   {
     event = { Down = { streak = 1, button = "Right" } },
     action = act.PasteFrom("Clipboard"),
+  },
+  -- Ctrl+Drag to move the window (Alt+Drag is column select — leave that alone)
+  {
+    event = { Drag = { streak = 1, button = "Left" } },
+    mods = "CTRL",
+    action = act.StartWindowDrag,
   },
 }
 
@@ -356,7 +394,8 @@ return config
 
 ### Things to adapt on a new machine
 
-- **Line 8** (`default_domain`): Run `wsl.exe -l -q` and use the exact distro name shown.
+- **`default_domain` / `wsl_domains`**: Run `wsl.exe -l -q` and use the exact distro name for both fields.
+- **`default_cwd`** (inside `wsl_domains`): Set to your preferred starting directory (e.g. `/mnt/d/labs`). Use `wsl_domains` for this — `config.default_cwd` does not work for WSL domains.
 - **`win32_system_backdrop`**: Only works on Windows 11. On Windows 10, remove this line.
 
 ---
@@ -577,20 +616,7 @@ Then write this content to `~/.config/oh-my-posh/theme.omp.json`:
 
 ## Step 6: Configure .bashrc
 
-Add the following near the **top** of `~/.bashrc` (after the interactivity check) and at the **end**:
-
-Near the top (after `case $- in ... esac`):
-
-```bash
-# Start in preferred directory when the shell opens in home.
-# This preserves explicit launch directories passed in by terminal apps.
-# ADAPT: Change to your preferred starting directory.
-if [ "$PWD" = "$HOME" ]; then
-  cd /path/to/your/projects
-fi
-```
-
-At the end:
+Add the following at the **end** of `~/.bashrc`:
 
 ```bash
 # claude code
@@ -621,7 +647,6 @@ eval "$(~/.local/bin/oh-my-posh init bash --config ~/.config/oh-my-posh/theme.om
 
 | Addition | Purpose |
 |---|---|
-| `if [ "$PWD" = "$HOME" ]; then cd /path/to/your/projects; fi` | Sets a fallback starting directory for shells that open in home, while preserving explicit launch directories passed in by WezTerm, AgentDeck, or other terminal apps |
 | `PATH += ~/.local/bin` | Makes Claude Code and Oh My Posh accessible |
 | `claude() { ... printf '\033[J'; }` | Clears leftover TUI rendering after Claude Code exits. `ESC[J` erases from cursor to bottom of screen without clearing scrollback. |
 | `__wezterm_set_user_vars` | Sends the current git branch to WezTerm via OSC 1337 user vars on each prompt. Guarded by `TERM_PROGRAM` so it's harmless in non-WezTerm terminals. Must come **before** Oh My Posh init. |
@@ -638,7 +663,7 @@ eval "$(~/.local/bin/oh-my-posh init bash --config ~/.config/oh-my-posh/theme.om
    - [ ] Powerline prompt with OS icon, username, path, git info
    - [ ] Nerd Font icons render (no boxes/question marks)
    - [ ] Semi-transparent window with acrylic blur
-   - [ ] Tab bar at bottom (visible with 2+ tabs: `Ctrl+Shift+T`)
+   - [ ] Tab bar at top, always visible, with min/max/close buttons in top-right
    - [ ] `Alt+\` splits pane vertically
    - [ ] `Alt+Left` / `Alt+Right` switch tabs
    - [ ] `Ctrl+Alt+Left` / `Ctrl+Alt+Right` move between left/right panes
@@ -672,13 +697,16 @@ eval "$(~/.local/bin/oh-my-posh init bash --config ~/.config/oh-my-posh/theme.om
 | `Ctrl + Shift + F` | Search |
 | `Ctrl + Click` | Open URL |
 | `Right Click` | Paste from clipboard |
+| `Ctrl + Drag` | Move window (no title bar to drag) |
 
 ---
 
 ## Changelog
 
+- **2026-04-10** — Tab bar moved to top, switched to fancy style with per-tab close buttons, INTEGRATED_BUTTONS for clickable window controls, fully Tokyo Night themed via `window_frame`. Added Ctrl+Drag to move window.
 - **2026-04-10** — Synced scrollbar settings: enabled scrollbar, added `min_scroll_bar_height`, added `scrollbar_thumb` color to match Tokyo Night palette.
+- **2026-04-10** — Fixed default starting directory for new windows and tabs: switched from `config.default_cwd` (which doesn't work for WSL domains) to `config.wsl_domains[].default_cwd`.
 - **2026-04-04** — Added vertical scrollbar with Tokyo Night-aligned thumb styling and larger minimum drag target.
-- **2026-03-30** — Remapped Alt+Left/Right to tab navigation, moved pane focus to Ctrl+Alt+Left/Right. Conditional `cd` in `.bashrc` to preserve explicit launch directories.
+- **2026-03-30** — Remapped Alt+Left/Right to tab navigation, moved pane focus to Ctrl+Alt+Left/Right.
 - **2026-03-28** — Enhanced status bar: shell type indicator (WSL vs Windows), git branch via OSC user vars, 12-hour clock with seconds, brighter time color. Wider tabs (max 80, title truncation at 72 chars).
 - **2026-03-28** — Initial setup: WezTerm config (Tokyo Night, borderless, acrylic, WebGpu, retro tab bar, keybindings), Nerd Font symbols, Oh My Posh theme (powerline prompt with git + language segments), kitty keyboard protocol for Shift+Enter support, Claude Code exit cleanup wrapper.

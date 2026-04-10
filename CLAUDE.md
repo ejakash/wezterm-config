@@ -14,6 +14,7 @@ AGENTS.md              — mirror of CLAUDE.md for other AI harnesses
 SETUP-GUIDE.md         — baseline setup, runnable end to end on a new machine
 CHANGELOG-SUMMARY.md   — index of all changes with [setup]/[optional] tags
 changelogs/            — one file per change, named CHANGELOG-DATE-title.md
+.changelog-status      — local per-machine list of applied changelogs (git-ignored)
 ```
 
 ## How Setup and Changelogs Work Together
@@ -38,14 +39,27 @@ Think of this as event sourcing:
    - **The user may override the classification.** If they do, update accordingly.
 4. If `[setup]`: also update SETUP-GUIDE.md to include the change.
 5. Add the entry to CHANGELOG-SUMMARY.md with the tag and a link to the changelog file.
+6. Add the changelog filename (no path) to `.changelog-status` on this machine — it was just applied here.
 
 ### Workflow: setting up a new machine
 
 1. Run SETUP-GUIDE.md end to end. This covers everything tagged `[setup]`.
-2. Read CHANGELOG-SUMMARY.md.
-3. Filter to `[optional]` entries only.
+2. Initialize `.changelog-status` — add all changelogs currently tagged `[setup]` in CHANGELOG-SUMMARY.md. They are already folded into the setup guide so there is nothing to apply; the file just records that they are done.
+3. Read CHANGELOG-SUMMARY.md, filter to `[optional]` entries only.
 4. Present each one to the user with its description. User says yes or no.
-5. For each yes, read the linked changelog file and apply the change.
+5. For each yes, read the linked changelog file, apply the change, and add the filename to `.changelog-status`.
+
+### Workflow: syncing an existing machine
+
+Run this when a machine already has a `.changelog-status` and you want to bring it up to date.
+
+1. Read `.changelog-status` to get the list of already-applied changelogs.
+2. Read CHANGELOG-SUMMARY.md top to bottom (chronological order).
+3. Identify every changelog filename not present in `.changelog-status`.
+4. For each missing entry in order:
+   - `[setup]`: read the changelog file, apply the change, add filename to `.changelog-status`.
+   - `[optional]`: present the description to the user (yes/no). If yes, apply and add to `.changelog-status`. If no, skip — do not add, so the user will be asked again on the next sync.
+5. When there are no more missing entries, the machine is up to date.
 
 ## Config Paths
 

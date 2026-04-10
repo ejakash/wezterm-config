@@ -24,3 +24,7 @@ This only changes directory when the shell opens in `$HOME`. If a terminal app p
 - The unconditional `cd` was the root cause of AgentDeck sessions landing in the wrong folder.
 - `OLDPWD` exposed the issue: it showed the correct launch dir before `.bashrc` moved it.
 - The path in the setup guide uses a placeholder (`/path/to/your/projects`) — adapt per machine.
+
+## Replaced
+
+This approach was replaced on 2026-04-10. The correct place to set the starting directory is `config.default_cwd` in `.wezterm.lua` — no `.bashrc` workaround needed. See `changelogs/CHANGELOG-2026-04-10-default-cwd-wezterm.md`.
