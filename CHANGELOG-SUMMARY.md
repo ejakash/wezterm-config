@@ -8,3 +8,5 @@ Index of all changes. `[setup]` entries are already in SETUP-GUIDE.md. `[optiona
 - [setup] Fix default starting directory: use wsl_domains.default_cwd (config.default_cwd silently ignored for WSL domains) — [2026-04-10](changelogs/CHANGELOG-2026-04-10-default-cwd-wezterm.md)
 - [setup] Tab bar moved to top, fancy style with per-tab close buttons, INTEGRATED_BUTTONS for clickable window controls, fully Tokyo Night themed via window_frame — [2026-04-10](changelogs/CHANGELOG-2026-04-10-tab-bar-top-fancy-themed.md)
 - [setup] Ctrl+Drag to move window (no title bar present with INTEGRATED_BUTTONS|RESIZE) — [2026-04-10](changelogs/CHANGELOG-2026-04-10-ctrl-drag-window-move.md)
+- [setup] Smart `cd` fuzzy picker: `fdfind` + `fzf` over `~/source`, falls back to `builtin cd` for real/absolute paths — [2026-04-14](changelogs/CHANGELOG-2026-04-14-smart-cd-fuzzy-picker.md)
+- [setup] Pane splitting power-user setup: Alt+/ and Alt+. to split, Alt+arrows to navigate, Alt+R modal resize mode, Alt+O rotate panes, status bar mode indicator — [2026-04-14](changelogs/CHANGELOG-2026-04-14-pane-splitting-power-user.md)

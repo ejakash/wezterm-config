@@ -2,7 +2,7 @@
 
 A reproducible guide for setting up a polished WezTerm terminal on Windows with WSL. Designed to be read by a human or by an AI agent to replicate the setup on a new machine.
 
-**Last updated:** 2026-04-10
+**Last updated:** 2026-04-14
 
 ---
 
@@ -256,23 +256,30 @@ config.visual_bell = {
 local act = wezterm.action
 
 config.keys = {
-  -- Pane splitting (Alt + \ for vertical, Alt + - for horizontal)
-  { key = "\\", mods = "ALT",        action = act.SplitHorizontal({ domain = "CurrentPaneDomain" }) },
-  { key = "-",  mods = "ALT",        action = act.SplitVertical({ domain = "CurrentPaneDomain" }) },
+  -- Pane splitting
+  -- Alt+/  = split right (side by side)
+  -- Alt+.  = split down (stacked)
+  { key = "/", mods = "ALT", action = act.SplitHorizontal({ domain = "CurrentPaneDomain" }) },
+  { key = ".", mods = "ALT", action = act.SplitVertical({   domain = "CurrentPaneDomain" }) },
 
-  -- Use Alt + Left/Right for tab navigation; Ctrl+Alt + Left/Right for side panes
-  { key = "LeftArrow",  mods = "ALT", action = act.ActivateTabRelative(-1) },
-  { key = "RightArrow", mods = "ALT", action = act.ActivateTabRelative(1) },
-  { key = "LeftArrow",  mods = "CTRL|ALT", action = act.ActivatePaneDirection("Left") },
-  { key = "RightArrow", mods = "CTRL|ALT", action = act.ActivatePaneDirection("Right") },
+  -- Pane navigation — Alt+arrows for all four directions
+  { key = "LeftArrow",  mods = "ALT", action = act.ActivatePaneDirection("Left") },
+  { key = "RightArrow", mods = "ALT", action = act.ActivatePaneDirection("Right") },
   { key = "UpArrow",    mods = "ALT", action = act.ActivatePaneDirection("Up") },
   { key = "DownArrow",  mods = "ALT", action = act.ActivatePaneDirection("Down") },
+  -- Tab navigation — Ctrl+Tab / Ctrl+Shift+Tab (see below) and Alt+1-5
 
-  -- Resize panes with Alt+Shift + arrow keys
-  { key = "LeftArrow",  mods = "ALT|SHIFT", action = act.AdjustPaneSize({ "Left", 3 }) },
+  -- Pane resize:
+  --   Alt+R            → enter resize mode (tap arrows freely, Escape exits)
+  --   Alt+Shift+arrows → one-shot resize without entering a mode
+  { key = "r", mods = "ALT", action = act.ActivateKeyTable({ name = "resize_pane", one_shot = false }) },
+  { key = "LeftArrow",  mods = "ALT|SHIFT", action = act.AdjustPaneSize({ "Left",  3 }) },
   { key = "RightArrow", mods = "ALT|SHIFT", action = act.AdjustPaneSize({ "Right", 3 }) },
-  { key = "UpArrow",    mods = "ALT|SHIFT", action = act.AdjustPaneSize({ "Up", 3 }) },
-  { key = "DownArrow",  mods = "ALT|SHIFT", action = act.AdjustPaneSize({ "Down", 3 }) },
+  { key = "UpArrow",    mods = "ALT|SHIFT", action = act.AdjustPaneSize({ "Up",    3 }) },
+  { key = "DownArrow",  mods = "ALT|SHIFT", action = act.AdjustPaneSize({ "Down",  3 }) },
+
+  -- Rotate panes clockwise within the current tab (Alt+O)
+  { key = "o", mods = "ALT", action = act.RotatePanes("Clockwise") },
 
   -- Close pane (Ctrl+Shift+W)
   { key = "w", mods = "CTRL|SHIFT", action = act.CloseCurrentPane({ confirm = false }) },
@@ -312,6 +319,27 @@ config.keys = {
 
   -- Search (Ctrl+Shift+F)
   { key = "f", mods = "CTRL|SHIFT", action = act.Search("CurrentSelectionOrEmptyString") },
+}
+
+-- ==========================================================================
+--  KEY TABLES — Modal keybindings (enter a mode, act freely, Escape to exit)
+-- ==========================================================================
+-- resize_pane: entered with Alt+R. Tap h/j/k/l or arrows to resize continuously.
+-- The status bar shows [RESIZE PANE] while in this mode.
+config.key_tables = {
+  resize_pane = {
+    { key = "h",          action = act.AdjustPaneSize({ "Left",  3 }) },
+    { key = "j",          action = act.AdjustPaneSize({ "Down",  3 }) },
+    { key = "k",          action = act.AdjustPaneSize({ "Up",    3 }) },
+    { key = "l",          action = act.AdjustPaneSize({ "Right", 3 }) },
+    { key = "LeftArrow",  action = act.AdjustPaneSize({ "Left",  3 }) },
+    { key = "DownArrow",  action = act.AdjustPaneSize({ "Down",  3 }) },
+    { key = "UpArrow",    action = act.AdjustPaneSize({ "Up",    3 }) },
+    { key = "RightArrow", action = act.AdjustPaneSize({ "Right", 3 }) },
+    { key = "Escape", action = "PopKeyTable" },
+    { key = "q",      action = "PopKeyTable" },
+    { key = "Enter",  action = "PopKeyTable" },
+  },
 }
 
 -- ==========================================================================
@@ -357,6 +385,16 @@ config.enable_kitty_keyboard = true
 -- ==========================================================================
 wezterm.on("update-status", function(window, pane)
   local cells = {}
+
+  -- Key table mode indicator (e.g. shows "[RESIZE PANE]" while Alt+R mode is active)
+  local key_table = window:active_key_table()
+  if key_table then
+    local label = key_table:upper():gsub("_", " ")
+    table.insert(cells, { Foreground = { Color = "#f7768e" } })
+    table.insert(cells, { Text = " [" .. label .. "]" })
+    table.insert(cells, { Foreground = { Color = "#565f89" } })
+    table.insert(cells, { Text = "  \u{2502}  " })
+  end
 
   -- Shell type indicator (WSL vs native Windows)
   local domain = pane:get_domain_name()
@@ -616,7 +654,15 @@ Then write this content to `~/.config/oh-my-posh/theme.omp.json`:
 
 ## Step 6: Configure .bashrc
 
-Add the following at the **end** of `~/.bashrc`:
+### Install shell tool dependencies
+
+```bash
+sudo apt-get install -y fzf fd-find
+```
+
+These are required for the smart `cd` picker (see below). The picker silently no-ops if either package is missing, so this step is safe to skip — but the feature won't work without them.
+
+### Add the following at the **end** of `~/.bashrc`:
 
 ```bash
 # claude code
@@ -641,6 +687,49 @@ PROMPT_COMMAND="__wezterm_set_user_vars;${PROMPT_COMMAND:-}"
 
 # Oh My Posh prompt
 eval "$(~/.local/bin/oh-my-posh init bash --config ~/.config/oh-my-posh/theme.omp.json)"
+
+# smart-cd: fuzzy interactive directory picker (interactive shells only)
+if command -v fzf >/dev/null 2>&1 && { command -v fd >/dev/null 2>&1 || command -v fdfind >/dev/null 2>&1; }; then
+
+  __smart_cd_pick() {
+    local FD target
+    FD=$(command -v fd || command -v fdfind) || return 1
+    target=$(
+      "$FD" . "$HOME/source" \
+        --type d --max-depth 5 --hidden \
+        --exclude .git --exclude node_modules --exclude bin --exclude obj \
+        --exclude .cache --exclude .local --exclude .npm --exclude .cargo \
+        --exclude .venv --exclude venv --exclude dist --exclude build \
+        --exclude target --exclude Downloads --exclude Pictures \
+        --exclude Videos --exclude Music \
+        2>/dev/null |
+      sed "s|^$HOME/source/||" |
+      fzf --height 50% --reverse --prompt="cd> " --query="${*:-}"
+    )
+    [ -n "$target" ] && builtin cd "$HOME/source/$target"
+  }
+
+  cd() {
+    if [[ $- != *i* ]]; then
+      builtin cd "$@"
+      return
+    fi
+
+    if [ $# -eq 0 ]; then
+      __smart_cd_pick
+      return
+    fi
+
+    if [ -d "$1" ] || [ -f "$1" ] || [[ "$1" == .* ]] || [[ "$1" == /* ]] || [[ "$1" == ~* ]]; then
+      builtin cd "$@"
+      return
+    fi
+
+    __smart_cd_pick "$*"
+  }
+
+fi
+# end smart-cd
 ```
 
 ### Shell additions explained
@@ -651,6 +740,7 @@ eval "$(~/.local/bin/oh-my-posh init bash --config ~/.config/oh-my-posh/theme.om
 | `claude() { ... printf '\033[J'; }` | Clears leftover TUI rendering after Claude Code exits. `ESC[J` erases from cursor to bottom of screen without clearing scrollback. |
 | `__wezterm_set_user_vars` | Sends the current git branch to WezTerm via OSC 1337 user vars on each prompt. Guarded by `TERM_PROGRAM` so it's harmless in non-WezTerm terminals. Must come **before** Oh My Posh init. |
 | `eval "$(oh-my-posh init bash ...)"` | Activates the Oh My Posh prompt, replacing the default PS1. **Must be the last line** to ensure it overrides any earlier prompt setup. |
+| `cd` wrapper (`smart-cd`) | Replaces `cd` in interactive shells with a fuzzy picker backed by `fdfind` + `fzf`. `cd` with no args or an unknown path opens the picker searching `~/source`. Existing paths, absolute paths, `..`, and `~` prefixes pass straight through to `builtin cd`. Silently disabled if `fzf` or `fdfind` is not installed. |
 
 ---
 
@@ -664,33 +754,59 @@ eval "$(~/.local/bin/oh-my-posh init bash --config ~/.config/oh-my-posh/theme.om
    - [ ] Nerd Font icons render (no boxes/question marks)
    - [ ] Semi-transparent window with acrylic blur
    - [ ] Tab bar at top, always visible, with min/max/close buttons in top-right
-   - [ ] `Alt+\` splits pane vertically
-   - [ ] `Alt+Left` / `Alt+Right` switch tabs
-   - [ ] `Ctrl+Alt+Left` / `Ctrl+Alt+Right` move between left/right panes
+   - [ ] `Alt+/` splits pane right (side by side)
+   - [ ] `Alt+.` splits pane down (stacked)
+   - [ ] `Alt+arrows` moves focus between panes
+   - [ ] `Alt+R` enters resize mode, arrow keys resize, `Escape` exits; status bar shows `[RESIZE PANE]`
+   - [ ] `Ctrl+Tab` / `Ctrl+Shift+Tab` switch tabs
    - [ ] Right prompt shows language version when in a project dir
    - [ ] `Shift+Enter` creates newline in Claude Code
    - [ ] Status bar shows shell type (e.g., ` Ubuntu-24.04`)
    - [ ] Status bar shows git branch when inside a repo
    - [ ] Status bar shows 12-hour time with seconds
    - [ ] Exiting Claude Code leaves no visual artifacts
+   - [ ] `cd liceapi` opens the fuzzy picker with "liceapi" pre-typed (requires `fzf` + `fd-find`)
 
 ---
 
 ## Keybinding Cheat Sheet
 
+### Pane Splitting
 | Shortcut | Action |
 |---|---|
-| `Alt + \` | Split pane vertically |
-| `Alt + -` | Split pane horizontally |
-| `Alt + Left` / `Alt + Right` | Previous / next tab |
-| `Ctrl + Alt + Left` / `Ctrl + Alt + Right` | Move between left / right panes |
-| `Alt + Up` / `Alt + Down` | Move between up / down panes |
-| `Alt + Shift + Arrow` | Resize pane |
-| `Alt + Z` | Toggle pane zoom |
-| `Ctrl + Shift + W` | Close pane |
+| `Alt + /` | Split right (side by side) |
+| `Alt + .` | Split down (stacked) |
+
+### Pane Navigation
+| Shortcut | Action |
+|---|---|
+| `Alt + Left` / `Alt + Right` | Move focus left / right |
+| `Alt + Up` / `Alt + Down` | Move focus up / down |
+
+### Pane Resizing
+| Shortcut | Action |
+|---|---|
+| `Alt + R` | Enter resize mode — tap arrows freely; `Escape`/`q`/`Enter` exits |
+| `Alt + Shift + Arrow` | One-shot resize by 3 cells (no mode needed) |
+
+### Pane Management
+| Shortcut | Action |
+|---|---|
+| `Alt + Z` | Toggle pane zoom (fills window, press again to restore) |
+| `Alt + O` | Rotate panes clockwise in the current tab |
+| `Ctrl + Shift + W` | Close current pane |
+
+### Tabs
+| Shortcut | Action |
+|---|---|
 | `Ctrl + Shift + T` | New tab |
+| `Alt + Left` / `Alt + Right` | Move pane focus left / right |
 | `Ctrl + Tab` / `Ctrl + Shift + Tab` | Next / previous tab |
 | `Alt + 1-5` | Jump to tab by number |
+
+### Other
+| Shortcut | Action |
+|---|---|
 | `Ctrl + Shift + P` | Command palette |
 | `Ctrl + =` / `-` / `0` | Font size: increase / decrease / reset |
 | `Alt + [` | Enter copy mode (tmux-style) |
@@ -703,6 +819,8 @@ eval "$(~/.local/bin/oh-my-posh init bash --config ~/.config/oh-my-posh/theme.om
 
 ## Changelog
 
+- **2026-04-14** — Pane splitting power-user setup: CWD-aware splits (new pane inherits current directory), `Alt+H/J/K/L` vim-style navigation, `Alt+R` modal resize mode with status bar indicator, `Alt+O` rotate panes.
+- **2026-04-14** — Smart `cd` wrapper: fuzzy directory picker via `fdfind` + `fzf`, searching `~/source`. Falls back to `builtin cd` for real paths, absolute paths, and non-interactive shells.
 - **2026-04-10** — Tab bar moved to top, switched to fancy style with per-tab close buttons, INTEGRATED_BUTTONS for clickable window controls, fully Tokyo Night themed via `window_frame`. Added Ctrl+Drag to move window.
 - **2026-04-10** — Synced scrollbar settings: enabled scrollbar, added `min_scroll_bar_height`, added `scrollbar_thumb` color to match Tokyo Night palette.
 - **2026-04-10** — Fixed default starting directory for new windows and tabs: switched from `config.default_cwd` (which doesn't work for WSL domains) to `config.wsl_domains[].default_cwd`.
