@@ -175,7 +175,7 @@ config.tab_max_width = 80
 
 config.window_frame = {
   font = wezterm.font("JetBrains Mono", { weight = "Medium" }),
-  font_size = 11.0,
+  font_size = 11.5,
   active_titlebar_bg   = "#1a1b26",
   inactive_titlebar_bg = "#16171f",
   border_left_color   = "#1a1b26",
