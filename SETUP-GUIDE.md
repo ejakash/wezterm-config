@@ -255,12 +255,33 @@ config.visual_bell = {
 -- ==========================================================================
 local act = wezterm.action
 
+-- Pick a safe CWD for new panes. Tolerates all three shapes WezTerm has returned over the years
+-- (nil, plain string URL, {file_path=...}) and rejects Windows paths that would fail WSL chdir.
+local FALLBACK_CWD = "/mnt/d/labs"
+local function resolve_cwd(pane)
+  local ok, cwd_url = pcall(function() return pane:get_current_working_dir() end)
+  if not ok or cwd_url == nil then return FALLBACK_CWD end
+  local path
+  if type(cwd_url) == "string" then
+    path = cwd_url:match("^file://[^/]*(/.*)$") or cwd_url
+  elseif type(cwd_url) == "userdata" or type(cwd_url) == "table" then
+    path = cwd_url.file_path
+  end
+  if type(path) ~= "string" or path == "" then return FALLBACK_CWD end
+  if path:match("^%a:[/\\]") or path:match("^\\\\") then return FALLBACK_CWD end
+  return path
+end
+
 config.keys = {
-  -- Pane splitting
+  -- Pane splitting — new panes inherit the active pane's CWD via OSC 7 (see .bashrc)
   -- Alt+/  = split right (side by side)
   -- Alt+.  = split down (stacked)
-  { key = "/", mods = "ALT", action = act.SplitHorizontal({ domain = "CurrentPaneDomain" }) },
-  { key = ".", mods = "ALT", action = act.SplitVertical({   domain = "CurrentPaneDomain" }) },
+  { key = "/", mods = "ALT", action = wezterm.action_callback(function(win, pane)
+    win:perform_action(act.SplitHorizontal({ domain = "CurrentPaneDomain", cwd = resolve_cwd(pane) }), pane)
+  end) },
+  { key = ".", mods = "ALT", action = wezterm.action_callback(function(win, pane)
+    win:perform_action(act.SplitVertical({ domain = "CurrentPaneDomain", cwd = resolve_cwd(pane) }), pane)
+  end) },
 
   -- Pane navigation — Alt+arrows for all four directions
   { key = "LeftArrow",  mods = "ALT", action = act.ActivatePaneDirection("Left") },
@@ -675,12 +696,16 @@ export PATH="$HOME/.opencode/bin:$PATH"
 # Windows .NET (optional — only if using .NET from WSL)
 alias dotnet='dotnet.exe'
 
-# Send git branch to WezTerm status bar via user vars
+# Send git branch + CWD to WezTerm
+# WEZTERM_* env vars are more reliable than TERM_PROGRAM (tmux/VS Code can clobber it).
+# OSC 7 uses literal "localhost" — WezTerm rejects URLs whose hostname doesn't match the
+# host it thinks it's on, and WSL's /etc/hostname can differ from the Windows hostname.
 __wezterm_set_user_vars() {
-  if [[ "$TERM_PROGRAM" == "WezTerm" ]]; then
+  if [[ -n "$WEZTERM_EXECUTABLE" || -n "$WEZTERM_PANE" || "$TERM_PROGRAM" == "WezTerm" ]]; then
     local branch
     branch=$(git branch --show-current 2>/dev/null)
     printf "\033]1337;SetUserVar=gitbranch=%s\007" "$(printf '%s' "${branch:-}" | base64 -w0)"
+    printf "\033]7;file://localhost%s\033\\" "$PWD"
   fi
 }
 PROMPT_COMMAND="__wezterm_set_user_vars;${PROMPT_COMMAND:-}"
@@ -738,7 +763,7 @@ fi
 |---|---|
 | `PATH += ~/.local/bin` | Makes Claude Code and Oh My Posh accessible |
 | `claude() { ... printf '\033[J'; }` | Clears leftover TUI rendering after Claude Code exits. `ESC[J` erases from cursor to bottom of screen without clearing scrollback. |
-| `__wezterm_set_user_vars` | Sends the current git branch to WezTerm via OSC 1337 user vars on each prompt. Guarded by `TERM_PROGRAM` so it's harmless in non-WezTerm terminals. Must come **before** Oh My Posh init. |
+| `__wezterm_set_user_vars` | Sends the current git branch (OSC 1337 user var) and current working directory (OSC 7, using `localhost`) to WezTerm on each prompt. OSC 7 is what makes `pane:get_current_working_dir()` work, which the `Alt+/` / `Alt+.` split-pane keybindings rely on. Guarded by `WEZTERM_*` env vars (more reliable than `TERM_PROGRAM`, which wrappers can clobber). Must come **before** Oh My Posh init. |
 | `eval "$(oh-my-posh init bash ...)"` | Activates the Oh My Posh prompt, replacing the default PS1. **Must be the last line** to ensure it overrides any earlier prompt setup. |
 | `cd` wrapper (`smart-cd`) | Replaces `cd` in interactive shells with a fuzzy picker backed by `fdfind` + `fzf`. `cd` with no args or an unknown path opens the picker searching `~/source`. Existing paths, absolute paths, `..`, and `~` prefixes pass straight through to `builtin cd`. Silently disabled if `fzf` or `fdfind` is not installed. |
 
