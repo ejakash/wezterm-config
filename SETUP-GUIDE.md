@@ -714,13 +714,17 @@ PROMPT_COMMAND="__wezterm_set_user_vars;${PROMPT_COMMAND:-}"
 eval "$(~/.local/bin/oh-my-posh init bash --config ~/.config/oh-my-posh/theme.omp.json)"
 
 # smart-cd: fuzzy interactive directory picker (interactive shells only)
+# SMART_CD_ROOT is machine-specific — ask the user where their code/projects live
+# (e.g. "$HOME/source", "/mnt/d", "/mnt/c/dev") and set it below before sourcing.
 if command -v fzf >/dev/null 2>&1 && { command -v fd >/dev/null 2>&1 || command -v fdfind >/dev/null 2>&1; }; then
+
+  SMART_CD_ROOT="$HOME/source"   # <-- edit per machine
 
   __smart_cd_pick() {
     local FD target
     FD=$(command -v fd || command -v fdfind) || return 1
     target=$(
-      "$FD" . "$HOME/source" \
+      "$FD" . "$SMART_CD_ROOT" \
         --type d --max-depth 5 --hidden \
         --exclude .git --exclude node_modules --exclude bin --exclude obj \
         --exclude .cache --exclude .local --exclude .npm --exclude .cargo \
@@ -728,10 +732,10 @@ if command -v fzf >/dev/null 2>&1 && { command -v fd >/dev/null 2>&1 || command 
         --exclude target --exclude Downloads --exclude Pictures \
         --exclude Videos --exclude Music \
         2>/dev/null |
-      sed "s|^$HOME/source/||" |
+      sed "s|^$SMART_CD_ROOT/||" |
       fzf --height 50% --reverse --prompt="cd> " --query="${*:-}"
     )
-    [ -n "$target" ] && builtin cd "$HOME/source/$target"
+    [ -n "$target" ] && builtin cd "$SMART_CD_ROOT/$target"
   }
 
   cd() {
@@ -765,7 +769,7 @@ fi
 | `claude() { ... printf '\033[J'; }` | Clears leftover TUI rendering after Claude Code exits. `ESC[J` erases from cursor to bottom of screen without clearing scrollback. |
 | `__wezterm_set_user_vars` | Sends the current git branch (OSC 1337 user var) and current working directory (OSC 7, using `localhost`) to WezTerm on each prompt. OSC 7 is what makes `pane:get_current_working_dir()` work, which the `Alt+/` / `Alt+.` split-pane keybindings rely on. Guarded by `WEZTERM_*` env vars (more reliable than `TERM_PROGRAM`, which wrappers can clobber). Must come **before** Oh My Posh init. |
 | `eval "$(oh-my-posh init bash ...)"` | Activates the Oh My Posh prompt, replacing the default PS1. **Must be the last line** to ensure it overrides any earlier prompt setup. |
-| `cd` wrapper (`smart-cd`) | Replaces `cd` in interactive shells with a fuzzy picker backed by `fdfind` + `fzf`. `cd` with no args or an unknown path opens the picker searching `~/source`. Existing paths, absolute paths, `..`, and `~` prefixes pass straight through to `builtin cd`. Silently disabled if `fzf` or `fdfind` is not installed. |
+| `cd` wrapper (`smart-cd`) | Replaces `cd` in interactive shells with a fuzzy picker backed by `fdfind` + `fzf`. `cd` with no args or an unknown path opens the picker searching `$SMART_CD_ROOT`. **`SMART_CD_ROOT` is machine-specific** — during setup, ask the user where their code lives (e.g. `$HOME/source`, `/mnt/d`, `/mnt/c/dev`) and set it in the block above. Existing paths, absolute paths, `..`, and `~` prefixes pass straight through to `builtin cd`. Silently disabled if `fzf` or `fdfind` is not installed. |
 
 ---
 
