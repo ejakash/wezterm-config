@@ -1,0 +1,33 @@
+# Per-machine Claude Code state — never commit
+.claude/
+
+# Stale leftover from retired sync models (changelog-status, then the
+# synced-on-<hostname> tag — both gone; sync is now just `git pull`).
+# If this file appears, it's git-ignored and harmless.
+.changelog-status
+
+# Project-local SSH key for GitHub (credentials stay in the project, not ~/.ssh)
+.ssh/
+
+# Per-machine snapshot/restore points — large bg images, machine-specific paths
+.backups/
+
+# Per-machine local copies (samples are tracked)
+machine.lua
+theme.lua
+
+# Generated oh-my-posh config (exporter --omp output; the tracked
+# theme.omp.json template is the committed fallback)
+shell/oh-my-posh/theme.generated.omp.json
+
+# Cross-cutting drop-ins installed by sibling repos (contract README is tracked)
+plugins/*.lua
+
+# Brainstorming visual-companion artifacts (superpowers plugin)
+.superpowers/
+
+# Per-machine font selection (the fonts/*.lua registry + font.sample.lua default
+# are tracked) and downloaded font binaries (populate with shell/fonts.fish).
+font.lua
+fonts/assets/
+
