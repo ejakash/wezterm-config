@@ -15,12 +15,19 @@ function M.apply(config, ctx)
   -- ctx.wezterm          the wezterm module
   -- ctx.machine          machine.lua table (windows_user, wsl_distro, default_cwd, repo_dir_windows)
   -- ctx.theme            active theme table; take ALL colors from ctx.theme.ui
+  -- ctx.render_segment(opts)  build one status segment -> FormatItem[]. Design-
+  --                      agnostic: today it renders a rounded "pill" chip, but the
+  --                      look lives only in this function — plugins never change if
+  --                      the bar is restyled. opts = { text = label, fg = text color,
+  --                      chip = fill color (default ctx.theme.ui.statusline.chip),
+  --                      bold = bool, gap = trailing space, default true }. The base
+  --                      bar and every plugin use this one renderer.
   -- ctx.add_tab_overlay(fn)  register fn(tab, label, ctx) -> FormatItem[] | nil
   -- ctx.add_status_cell(fn)  register fn(window, pane, ctx) -> FormatItem[] | nil;
   --                      called each update-status tick; cells render leftmost in
-  --                      the right-status area, before the base cells. Include your
-  --                      own trailing separator ("  \u{2502}  " in ui.muted). Return
-  --                      nil to render nothing this tick.
+  --                      the right-status area, before the base cells. Render your
+  --                      segment with ctx.render_segment so it matches the bar (it carries
+  --                      its own trailing gap). Return nil to render nothing this tick.
 end
 return M
 ````

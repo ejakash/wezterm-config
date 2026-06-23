@@ -46,7 +46,8 @@ return {
     warn    = "#b06905",   -- claude-waiting tab gold
     warn_fg = "#f8efe7",   -- editor-cream on gold (inverse of the dark themes' dark-on-amber)
     warn_bg = "#f5e7d0",   -- claude-waiting pane tint — light amber, eyeball-tuned
-    statusline = { shell = "#2473b6", git = "#6952a1", clock = "#2c232e" },
+    statusline = { shell = "#2473b6", git = "#6952a1", clock = "#2c232e", chip = "#f0e3da" },   -- chip = status-bar pill bg
+    split = "#cdbfa3",   -- pane divider hairline (warm taupe)
     scrollbar_thumb = "#d2c9c4",
   },
   -- Prompt-only specialty washes (oh-my-posh). Named for readability; literal

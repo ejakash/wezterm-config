@@ -23,7 +23,7 @@ return {
     warn    = "#e0af68",
     warn_fg = "#1a1b26",
     warn_bg = "#2a2018",
-    statusline = { shell = "#7dcfff", git = "#bb9af7", clock = "#c0caf5" },
+    statusline = { shell = "#7dcfff", git = "#bb9af7", clock = "#c0caf5", chip = "#292e42" },   -- chip = status-bar pill bg
     -- Dictation indicator (optional; used by the dictation-status plugin from
     -- the homemade_dictation_app repo — themes without this block fall back
     -- to generic ui colors). One color per app state; *_dim is the dark phase
@@ -37,6 +37,7 @@ return {
       transcribing     = "#e0af68",  -- whisper busy (blinks slow)
       transcribing_dim = "#705634",
     },
+    split = "#3b4261",   -- pane divider
     scrollbar_thumb = "#3b4261",
   },
   tab_bar = {

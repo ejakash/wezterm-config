@@ -53,17 +53,16 @@ if not font_def then
 end
 
 -- markdown-viewer (../wezterm-webview): a chromeless browser pane docked beside
--- WezTerm. Driven by the Ctrl+Alt+/ keybind (see config.keys) and by the `mdview`
--- user-var that `view <file>` emits (agent/CLI trigger).
+-- WezTerm. Opened by the Ctrl+Alt+/ keybind (see config.keys), the `view` CLI
+-- (which spawns mdview-host.exe directly), or Ctrl+Click on a *.md path (the
+-- open-uri handler below). The serverless viewer is self-contained — no Node
+-- server and no `mdview` user-var.
 -- ../wezterm-webview is an OPTIONAL sibling. If it isn't cloned, degrade the
 -- dock to no-ops so the rest of the config still loads (same load_if_exists
 -- pattern as machine/theme/font above).
 local mdview = load_if_exists(WEBVIEW_DIR .. "\\dock.lua")
 local have_webview = mdview ~= nil
-mdview = mdview or { on_user_var = function() end, toggle = function() end }
-wezterm.on("user-var-changed", function(win, pane, name, val)
-  mdview.on_user_var(win, pane, name, val)
-end)
+mdview = mdview or { show = function() end, toggle = function() end }
 
 -- dofile'd files are NOT auto-watched (only the main config and require'd
 -- files are) — register them so editing machine/theme files hot-reloads.
@@ -79,10 +78,46 @@ end
 -- Plugin context + tab-title overlay / status-cell chains (see plugins/README.md).
 local tab_overlays = {}
 local status_cell_providers = {}
+
+-- Status-bar segment renderer — the design-agnostic API plugins call. Returns the
+-- FormatItem[] for ONE status segment in the theme's current chrome; today that
+-- chrome is a rounded "pill" chip, but reshaping the bar means editing only this
+-- function, never the downstream plugins (plugins/README.md). opts: text = label;
+-- fg = text color; chip = fill color (default theme.ui.statusline.chip); bold =
+-- heavier label; gap = trailing space (default true). Implementation detail: the
+-- half-circle caps (Nerd Font U+E0B6 / U+E0B4) are drawn in the chip color over the
+-- bar so the rounded ends read as the body; falls back to the theme bg when a theme
+-- omits the chip token (the segment degrades to plain text rather than breaking).
+local PILL_CAP_L, PILL_CAP_R = "\u{e0b6}", "\u{e0b4}"
+local function render_segment(opts)
+  local bar = opts.bar
+    or (theme.tab_bar.window_frame and theme.tab_bar.window_frame.active_titlebar_bg)
+    or (theme.tab_bar.colors and theme.tab_bar.colors.background)
+    or theme.colors.background
+  local chip = opts.chip
+    or (theme.ui.statusline and theme.ui.statusline.chip)
+    or theme.colors.background
+  local fg = opts.fg or theme.colors.foreground
+  local items = {
+    { Background = { Color = bar } }, { Foreground = { Color = chip } }, { Text = PILL_CAP_L },
+    { Background = { Color = chip } },
+  }
+  if opts.bold then items[#items + 1] = { Attribute = { Intensity = "Bold" } } end
+  items[#items + 1] = { Foreground = { Color = fg } }
+  items[#items + 1] = { Text = " " .. opts.text .. " " }
+  items[#items + 1] = { Background = { Color = bar } }
+  items[#items + 1] = { Foreground = { Color = chip } }
+  items[#items + 1] = { Text = PILL_CAP_R }
+  items[#items + 1] = "ResetAttributes"
+  if opts.gap ~= false then items[#items + 1] = { Text = " " } end
+  return items
+end
+
 local ctx = {
   wezterm = wezterm,
   machine = machine,
   theme = theme,
+  render_segment = render_segment,
   add_tab_overlay = function(fn) table.insert(tab_overlays, fn) end,
   add_status_cell = function(fn) table.insert(status_cell_providers, fn) end,
 }
@@ -105,7 +140,7 @@ config.default_cursor_style = theme.cursor.style
 config.cursor_blink_rate = theme.cursor.blink_rate
 
 config.use_fancy_tab_bar = (theme.tab_bar.style == "fancy")
-config.colors = { scrollbar_thumb = theme.ui.scrollbar_thumb, tab_bar = theme.tab_bar.colors }
+config.colors = { scrollbar_thumb = theme.ui.scrollbar_thumb, tab_bar = theme.tab_bar.colors, split = theme.ui.split }
 if theme.tab_bar.window_frame then
   local wf = {}
   for k, v in pairs(theme.tab_bar.window_frame) do wf[k] = v end
@@ -246,6 +281,26 @@ local function resolve_cwd(pane)
   return path
 end
 
+-- Ctrl+Click a markdown path in terminal output -> open it in the viewer instead
+-- of the browser. Scoped to *.md/*.markdown filesystem paths so we don't hijack
+-- anything else; real URLs (incl. https://…/x.md) fall through to the OS browser.
+wezterm.on("open-uri", function(window, pane, uri)
+  if not have_webview then return end
+  if uri:match("^%a[%w+.%-]*://") and not uri:match("^file://") then return end  -- real URL -> browser
+  local path = uri:gsub("^file://[^/]*", "")
+  if not (path:match("%.md$") or path:match("%.markdown$")) then return end
+  if not path:match("^/") and not path:match("^%a:[/\\]") and not path:match("^\\\\") then
+    path = resolve_cwd(pane) .. "/" .. path   -- relative -> pane cwd
+  end
+  mdview.show(window, path)
+  return false   -- handled; suppress the default (browser) open
+end)
+
+-- Make bare *.md/*.markdown paths in terminal output clickable, in addition to the
+-- built-in URL rules, so the open-uri handler above can route them to the viewer.
+config.hyperlink_rules = wezterm.default_hyperlink_rules()
+table.insert(config.hyperlink_rules, { regex = [[\b\S+\.(?:md|markdown)\b]], format = "$0" })
+
 -- Match key assignments by PHYSICAL key position + actual modifiers, not the resolved
 -- character. This is the robust fix for the Caps Lock footgun: with the default "Mapped"
 -- preference, a binding like { key = "w", mods = "CTRL|SHIFT" } folds Shift into a capital
@@ -275,6 +330,28 @@ local function cycle_font(win, pane, dir)
   win:perform_action(act.ReloadConfiguration, pane)
 end
 
+-- Swap panes within the current tab. WezTerm has no *directional* swap primitive, and
+-- driving the interactive selector from Lua doesn't work (a programmatic SendKey lands
+-- in the pane's PTY, not the overlay — it types the label instead of selecting). So:
+--   * exactly 2 panes → RotatePanes == a clean swap, no overlay, nothing typed.
+--   * 3+ panes        → the native SwapWithActive picker (its overlay swallows the
+--                        keypress when *you* press the highlighted number).
+-- Direction can't be honored, so all four arrows call this same function.
+local PANE_SWAP_ALPHABET = "123456789"
+local function swap_panes()
+  return wezterm.action_callback(function(win, pane)
+    local tab = pane:tab()
+    if not tab then return end
+    local count = #tab:panes_with_info()
+    if count <= 1 then return end
+    if count == 2 then
+      win:perform_action(act.RotatePanes("Clockwise"), pane)
+      return
+    end
+    win:perform_action(act.PaneSelect({ mode = "SwapWithActive", alphabet = PANE_SWAP_ALPHABET }), pane)
+  end)
+end
+
 config.keys = {
   -- Pane splitting
   -- Alt+/  = split right (side by side), inherits CWD via OSC 7
@@ -300,14 +377,17 @@ config.keys = {
   { key = "DownArrow",  mods = "ALT", action = act.ActivatePaneDirection("Down") },
   -- Tab navigation — Ctrl+Tab / Ctrl+Shift+Tab (see below) and Alt+1-5
 
-  -- Pane resize:
-  --   Alt+R            → enter resize mode (tap h/j/k/l or arrows freely, Escape exits)
-  --   Alt+Shift+arrows → one-shot resize without entering a mode
+  -- Pane resize: Alt+R enters resize mode (tap h/j/k/l or arrows freely; Escape/q/Enter exits).
+  -- Resizing is otherwise done by mouse-dragging the split border, so Alt+Shift+arrows is freed
+  -- up for pane-swap below.
   { key = "r", mods = "ALT", action = act.ActivateKeyTable({ name = "resize_pane", one_shot = false }) },
-  { key = "LeftArrow",  mods = "ALT|SHIFT", action = act.AdjustPaneSize({ "Left",  3 }) },
-  { key = "RightArrow", mods = "ALT|SHIFT", action = act.AdjustPaneSize({ "Right", 3 }) },
-  { key = "UpArrow",    mods = "ALT|SHIFT", action = act.AdjustPaneSize({ "Up",    3 }) },
-  { key = "DownArrow",  mods = "ALT|SHIFT", action = act.AdjustPaneSize({ "Down",  3 }) },
+
+  -- Pane swap — Alt+Shift+any-arrow swaps panes (direction can't be honored; see swap_panes).
+  -- 2 panes swap instantly; 3+ pop the native picker — type the highlighted number to choose.
+  { key = "LeftArrow",  mods = "ALT|SHIFT", action = swap_panes() },
+  { key = "RightArrow", mods = "ALT|SHIFT", action = swap_panes() },
+  { key = "UpArrow",    mods = "ALT|SHIFT", action = swap_panes() },
+  { key = "DownArrow",  mods = "ALT|SHIFT", action = swap_panes() },
 
   -- Scrollback: Shift+Up/Down line-by-line, Ctrl+Shift+Up/Down quarter-page
   { key = "UpArrow",    mods = "SHIFT",      action = act.ScrollByLine(-1) },
@@ -446,17 +526,20 @@ config.mouse_bindings = {
 config.automatically_reload_config = true
 config.check_for_updates = false
 config.status_update_interval = 1000
--- Dim inactive panes — strength depends on the theme's polarity: 0.7
--- brightness is a good dim on dark themes but turns light creams muddy
--- gray (owner-reported on paper, 2026-06-12), so light themes get a gentle
--- touch instead. Derived from the theme background, no theme field needed.
+-- Inactive-pane treatment depends on the theme's polarity. On DARK themes the
+-- multiply-dim (brightness 0.7) recedes inactive panes cleanly. On LIGHT themes
+-- it only darkens the cream toward muddy gray (owner-reported on paper,
+-- 2026-06-12), and a constant divider then reads differently on each side
+-- depending on which pane is active — so light themes take NO dim and lean on
+-- the themed hairline (theme.ui.split) for separation. Polarity is derived from
+-- the theme background; no theme field needed.
 local function theme_bg_is_light()
   local r, g, b = theme.colors.background:match("^#(%x%x)(%x%x)(%x%x)$")
   return (0.2126 * tonumber(r, 16) + 0.7152 * tonumber(g, 16) + 0.0722 * tonumber(b, 16)) / 255 > 0.5
 end
 config.inactive_pane_hsb = theme_bg_is_light()
-    and { saturation = 0.93, brightness = 0.93 }
-    or  { saturation = 0.85, brightness = 0.7 }
+    and { saturation = 1.0, brightness = 1.0 }   -- light: no dim; the divider carries separation
+    or  { saturation = 0.85, brightness = 0.7 }   -- dark: dim recedes inactive panes
 config.switch_to_last_active_tab_when_closing_tab = true
 config.warn_about_missing_glyphs = false
 config.enable_kitty_keyboard = true
@@ -466,62 +549,48 @@ config.enable_kitty_keyboard = true
 -- ==========================================================================
 wezterm.on("update-status", function(window, pane)
   local cells = {}
+  local function add(items) for _, it in ipairs(items) do cells[#cells + 1] = it end end
 
-  -- Plugin status cells render leftmost, before the base cells; a provider
-  -- returns FormatItem[] (including its own trailing separator) or nil.
+  -- Plugin status cells render leftmost. A provider returns FormatItem[]
+  -- (e.g. ctx.render_segment{...} so its segment matches the bar) or nil.
   for _, provider in ipairs(status_cell_providers) do
     local ok, items = pcall(provider, window, pane, ctx)
     if not ok then
       wezterm.log_error("status cell failed: " .. tostring(items))
     elseif items then
-      for _, item in ipairs(items) do table.insert(cells, item) end
+      add(items)
     end
   end
 
-  -- Active font indicator (font_name from the bootstrap; Alt+F cycles it).
-  table.insert(cells, { Foreground = { Color = theme.ui.accent } })
-  table.insert(cells, { Text = " \u{f031} " .. font_name })
-  table.insert(cells, { Foreground = { Color = theme.ui.muted } })
-  table.insert(cells, { Text = "  \u{2502}  " })
+  -- Active font (font_name from the bootstrap; Alt+F cycles it).
+  add(render_segment({ text = "\u{f031} " .. font_name, fg = theme.ui.accent }))
 
-  -- Key table mode indicator (e.g. shows "[RESIZE PANE]" while Alt+R mode is active)
+  -- Key-table mode (e.g. [RESIZE PANE] while Alt+R mode is active).
   local key_table = window:active_key_table()
   if key_table then
-    local label = key_table:upper():gsub("_", " ")
-    table.insert(cells, { Foreground = { Color = theme.ui.alert } })
-    table.insert(cells, { Text = " [" .. label .. "]" })
-    table.insert(cells, { Foreground = { Color = theme.ui.muted } })
-    table.insert(cells, { Text = "  \u{2502}  " })
+    add(render_segment({ text = "[" .. key_table:upper():gsub("_", " ") .. "]", fg = theme.ui.alert, bold = true }))
   end
 
-  -- Shell type indicator (WSL vs native Windows)
+  -- Shell type (WSL distro vs native Windows).
   local domain = pane:get_domain_name()
   local shell_icon, shell_label
   if domain:find("^WSL:") then
-    shell_icon = "\u{e712}"   --
-    shell_label = domain:gsub("^WSL:", "")
+    shell_icon, shell_label = "\u{e712}", domain:gsub("^WSL:", "")
   else
-    shell_icon = "\u{e70f}"   --
-    shell_label = "Windows"
+    shell_icon, shell_label = "\u{e70f}", "Windows"
   end
-  table.insert(cells, { Foreground = { Color = theme.ui.statusline.shell } })
-  table.insert(cells, { Text = " " .. shell_icon .. " " .. shell_label })
+  add(render_segment({ text = shell_icon .. " " .. shell_label, fg = theme.ui.statusline.shell }))
 
-  -- Git branch (sent from shell via user var)
+  -- Git branch (sent from the shell via user var).
   local git_branch = pane:get_user_vars().gitbranch or ""
   if git_branch ~= "" then
-    table.insert(cells, { Foreground = { Color = theme.ui.muted } })
-    table.insert(cells, { Text = "  \u{2502}  " })
-    table.insert(cells, { Foreground = { Color = theme.ui.statusline.git } })
-    table.insert(cells, { Text = "\u{e725} " .. git_branch })
+    add(render_segment({ text = "\u{e725} " .. git_branch, fg = theme.ui.statusline.git }))
   end
 
-  -- Date & time (12-hour with seconds)
-  table.insert(cells, { Foreground = { Color = theme.ui.muted } })
-  table.insert(cells, { Text = "  \u{2502}  " })
-  table.insert(cells, { Foreground = { Color = theme.ui.statusline.clock } })
-  table.insert(cells, { Text = wezterm.strftime("%a %b %-d  %I:%M:%S %p") .. " " })
+  -- Date & time (12-hour with seconds).
+  add(render_segment({ text = wezterm.strftime("%a %b %-d  %I:%M:%S %p"), fg = theme.ui.statusline.clock }))
 
+  cells[#cells + 1] = { Text = "  " }
   window:set_right_status(wezterm.format(cells))
 end)
 
