@@ -5,4 +5,10 @@ return {
   wsl_distro       = "Ubuntu-24.04",       -- `wsl -l -q` to list
   default_cwd      = "/mnt/d/labs",        -- starting dir for new windows/tabs/panes
   repo_dir_windows = "D:\\labs\\wezterm",  -- this repo, as a Windows path (theme assets, plugins)
+
+  -- Optional. Extra font-fallback entries spliced in after the primary family and
+  -- before the icon/emoji fallbacks — the home for per-machine locale fonts the
+  -- public config shouldn't carry. Each entry is a wezterm.font_with_fallback spec,
+  -- e.g. { family = "Noto Sans Malayalam", scale = 0.95 }. Default: none.
+  font_fallback    = {},
 }

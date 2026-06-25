@@ -199,11 +199,20 @@ config.wsl_domains = {
 --  icon glyphs even without its own patched build.
 -- ==========================================================================
 config.font_dirs = { repo_path("fonts/assets") }
-config.font = wezterm.font_with_fallback({
+-- Fallback chain: selected family → optional per-machine fallbacks → icon glyphs →
+-- color emoji. machine.font_fallback (optional, gitignored machine.lua) is spliced
+-- in ahead of the icon/emoji tail — the home for per-machine locale fonts the public
+-- config shouldn't carry (e.g. Indic; see machine.sample.lua + the memory note
+-- malayalam-terminal-rendering-limits). Each entry is a font_with_fallback spec.
+local font_fallback = {
   { family = font_def.family, weight = font_def.weight or "Regular", harfbuzz_features = { "calt=1", "clig=1", "liga=1" } },
-  { family = "Symbols Nerd Font Mono" },
-  "Noto Color Emoji",
-})
+}
+for _, f in ipairs(machine.font_fallback or {}) do
+  table.insert(font_fallback, f)
+end
+table.insert(font_fallback, { family = "Symbols Nerd Font Mono" })
+table.insert(font_fallback, "Noto Color Emoji")
+config.font = wezterm.font_with_fallback(font_fallback)
 config.font_size = 11.5
 config.line_height = 1.15
 config.cell_width = 0.9
